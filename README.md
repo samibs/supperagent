@@ -14,66 +14,59 @@ This project demonstrates a robust framework for multi-agent collaboration, incl
 
 The system is built around a central `Orchestrator` that manages the workflow and communication between a team of specialized agents:
 
--   **Project Architect Agent**: Defines the high-level system design.
--   **Coder Agent**: Generates implementation code using an advanced "Think, Reflect, Modify" (TRM) reasoning process.
+-   **Project Architect Agent**: Defines the high-level system design and learns from past projects stored in long-term memory.
+-   **Coder Agent**: Generates implementation code using an advanced "Think, Reflect, Modify" (TRM) reasoning process and self-corrects with a linter.
 -   **Security Agent**: Analyzes code for vulnerabilities.
 -   **UI/UX Designer Agent**: Specifies accessible front-end structures and plans.
 -   **Database Agent**: Designs the database schema and queries.
 -   **Troubleshooting/QA Agent**: Critiques code and generates/executes unit tests.
 -   **Documentation Agent**: Creates final documentation and usage guides.
 
-## Setup and Installation
+## Flexible LLM Configuration
 
-To get started with AgentOS, follow these steps:
+AgentOS is designed to be resilient and flexible. You can provide API keys for Anthropic (Claude), Google (Gemini), and/or OpenAI (for Codex/GPT models).
+
+**Dynamic Client Fallback:**
+The system is smart. If an agent requests a specific model (e.g., "claude") but its API key is not configured, the platform will automatically **fall back** to another available client. The priority is: **Claude -> Gemini -> OpenAI**. This means you can run the entire platform with just a single configured API key.
+
+## Setup and Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
-    cd <repository-directory>
+    git clone https://github.com/samibs/supperagent.git
+    cd supperagent
     ```
-
-2.  **Create and activate a virtual environment (recommended):**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-
-3.  **Install the required dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+2.  **Create a virtual environment:** `python3 -m venv venv` and `source venv/bin/activate`.
+3.  **Install dependencies:** `pip install -r requirements.txt`.
 4.  **Configure API Keys:**
-    *   Copy the template file: `cp config.yaml.template config.yaml`
-    *   Edit `config.yaml` and add your real API keys for the LLM services you wish to use.
+    *   Copy the template: `cp config.yaml.template config.yaml`
+    *   Edit `config.yaml` and add your API key(s). You only need to provide a key for at least one service.
 
 ## How to Run the System
 
-The main entry point for the application is `agent_os/orchestrator.py`. You can run the entire agent-driven development workflow with the following command from the root directory:
+The main entry point is `agent_os/orchestrator.py`. Use command-line arguments to control the workflow:
 
-```bash
-python3 -m agent_os.orchestrator
-```
+-   **Run with a new goal:**
+    ```bash
+    python3 -m agent_os.orchestrator --goal "Your new project goal here"
+    ```
+-   **Start a fresh workflow (deletes previous progress):**
+    ```bash
+    python3 -m agent_os.orchestrator --fresh
+    ```
 
-This will execute the 7-phase workflow. The agents will generate plans, code, and feedback, which will be displayed in your console and saved to log files. The final output is the *source code* for the target application, not a running app itself.
-
-The workflow is **resumable**. If it's interrupted, simply run the command again to continue from the last completed phase. To start a fresh workflow, delete the `workflow_state.json` file.
+The workflow is **resumable**. If it's interrupted, simply run the command again to continue.
 
 ## How to Run the Unit Tests
 
-The project includes a suite of unit tests to verify the core functionality of the orchestrator and its agents. To run the tests, use Python's built-in `unittest` module:
+The project includes a comprehensive test suite. To run the tests:
 
 ```bash
 python3 -m unittest discover tests
 ```
 
-The tests will run, and you will see a confirmation that all tests passed.
-
-## Troubleshooting with `agent_os.log`
-
-The platform features a robust, centralized logging system that captures detailed information about the entire workflow. All events are logged to the `agent_os.log` file in the root directory. This file is your primary tool for debugging and understanding the system's behavior.
-
 ## Acknowledgements
 
-This project's architecture and agent-based reasoning concepts are inspired by the work of many in the AI community. A special acknowledgement goes to the `supperagent` project for its inspirational approach to multi-agent systems.
+This project's architecture is inspired by the work of many in the AI community. A special acknowledgement goes to the `supperagent` project for its inspirational approach to multi-agent systems.
 
 -   [supperagent on GitHub](https://github.com/samibs/supperagent)

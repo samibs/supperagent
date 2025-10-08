@@ -3,20 +3,23 @@
 #
 # To use this file:
 # 1. Make a copy of it and name it `config.yaml`.
-# 2. Fill in your actual API keys and desired model names below.
+# 2. Fill in your actual API keys for the services you wish to use.
 # 3. IMPORTANT: The `config.yaml` file is ignored by git to protect your secrets.
-#    Do NOT commit your `config.yaml` file to version control.
 
-# API Keys for the different LLM providers
-# You only need to fill in the keys for the services you intend to use.
+# --- API Keys ---
+# You only need to provide a key for AT LEAST ONE of the services below.
+# The platform will intelligently fall back to an available client if your
+# preferred model's key is not provided.
+# Fallback Priority: Anthropic -> Google -> OpenAI
 api_keys:
   anthropic: "sk-ant-..."  # Your API key for Claude models
   google: "..."           # Your API key for Gemini models
   openai: "sk-..."          # Your API key for Codex/GPT models
 
-# Model names to be used by the agents.
-# You can specify the exact model versions you want to use.
-# These are just examples; you can use any model available via your API key.
+# --- Model Selection ---
+# Specify the exact model versions you want each agent family to use.
+# These are just recommended examples; you can use any model available
+# via your configured API key(s).
 models:
   # Recommended for creative, planning, and documentation tasks.
   claude: "claude-3-haiku-20240307"

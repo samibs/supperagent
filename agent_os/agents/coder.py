@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import tempfile
 from .base import Agent, LLMModel
@@ -20,21 +21,19 @@ class CoderAgent(Agent):
         self.log.info("TRM Tool: Running linter on generated code...")
 
         # --- Linter Guard ---
-        # Check if the input looks like Python code before trying to lint.
-        # This prevents errors if the LLM returns a prose explanation instead of code.
-        if not any(kw in code_to_lint for kw in ['def ', 'class ', 'import ']):
-            self.log.warning("Linter skipped: Input does not appear to be Python code.")
+        # A more robust check to ensure the input is likely Python code.
+        if not isinstance(code_to_lint, str) or "def " not in code_to_lint:
+            self.log.warning("Linter skipped: Input is not a string or does not appear to be Python code.")
             return "Linter skipped: The provided text was not valid Python code."
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
-            # Clean up potential markdown fences from the LLM output
             cleaned_code = code_to_lint.strip().removeprefix("```python").removesuffix("```").strip()
             tmp.write(cleaned_code)
             filename = tmp.name
 
         try:
             process = subprocess.run(
-                ["ruff", "check", filename],
+                ["ruff", "check", filename, "--output-format=text"],
                 capture_output=True, text=True, timeout=30
             )
             if not process.stdout:
@@ -43,7 +42,7 @@ class CoderAgent(Agent):
 
             self.log.warning(f"Linter found issues:\n{process.stdout}")
             return process.stdout
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        except Exception as e:
             self.log.error(f"Failed to run ruff linter: {e}")
             return f"Linter execution failed: {e}"
         finally:
@@ -57,7 +56,7 @@ class CoderAgent(Agent):
             f"following specification. Focus on getting a full implementation "
             f"down quickly; refinement will happen later.\n\n{component_specification}"
         )
-        return self._invoke_llm(model="codex", prompt=prompt)
+        return self._invoke_llm(preferred_model="codex", prompt=prompt)
 
     def _self_critique_loop(self, draft: str, component_specification: str) -> str:
         """The 'thinking' scratchpad to refine logic."""
@@ -72,7 +71,7 @@ class CoderAgent(Agent):
                 f"Your current reasoning is: '{reasoning_scratchpad}'\n\n"
                 "Provide a new, more refined line of reasoning."
             )
-            reasoning_scratchpad = self._invoke_llm(model="claude", prompt=prompt)
+            reasoning_scratchpad = self._invoke_llm(preferred_model="claude", prompt=prompt)
         return reasoning_scratchpad
 
     def _revise_answer(self, component_specification: str, original_draft: str, refined_reasoning: str) -> str:
@@ -85,7 +84,7 @@ class CoderAgent(Agent):
             f"Your Final, Refined Reasoning:\n{refined_reasoning}\n\n"
             "Now, write the new, complete, and correct Python module."
         )
-        return self._invoke_llm(model="codex", prompt=prompt)
+        return self._invoke_llm(preferred_model="codex", prompt=prompt)
 
     def _check_confidence(self, cycle_number: int, new_draft: str) -> bool:
         """Performs a self-assessment to generate a confidence score for the draft."""
@@ -97,12 +96,14 @@ class CoderAgent(Agent):
         )
 
         try:
-            score_response = self._invoke_llm(model="gemini", prompt=prompt)
-            score_str = ''.join(filter(str.isdigit, score_response))
-            if not score_str:
+            score_response = self._invoke_llm(preferred_model="gemini", prompt=prompt)
+            # Use regex to find the first integer in the response string.
+            match = re.search(r'\d+', score_response)
+            if not match:
                 self.log.warning("Confidence check failed: LLM did not return a digit. Assuming low confidence.")
                 return False
-            score = int(score_str)
+
+            score = int(match.group(0))
             self.log.info(f"TRM: Received confidence score of {score}/10.")
             confidence_threshold = 7 + (cycle_number // 4)
             is_confident = score >= confidence_threshold
@@ -136,7 +137,7 @@ class CoderAgent(Agent):
                     f"--- Linter Issues ---\n{linter_issues}\n\n"
                     f"--- Original Code with Issues ---\n```python\n{new_draft}\n```"
                 )
-                new_draft = self._invoke_llm(model="codex", prompt=correction_prompt)
+                new_draft = self._invoke_llm(preferred_model="codex", prompt=correction_prompt)
                 self.log.info("TRM: Self-correction applied.")
 
             current_draft = new_draft

@@ -21,7 +21,7 @@ def get_anthropic_client():
         return None
 
 def get_gemini_client():
-    """Initializes and returns the Google Gemini client on demand."""
+    """Configures the Google Gemini client and returns the module if available."""
     try:
         config = config_loader.load_config()
         api_key = config.get('api_keys', {}).get('google')
@@ -29,8 +29,8 @@ def get_gemini_client():
             log.warning("Google Gemini API key is not configured.")
             return None
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-pro') # Using a standard model
-    except (KeyError, TypeError, FileNotFoundError):
+        return genai  # Return the configured module as a truthy value
+    except Exception:
         return None
 
 def get_openai_client():
@@ -60,10 +60,14 @@ def call_anthropic(prompt: str, model: str) -> str:
 
 def call_gemini(prompt: str, model: str) -> str:
     """Makes an API call to a Google (Gemini) model."""
-    client = get_gemini_client()
-    if not client: raise ConnectionError("Gemini client not configured.")
+    client_module = get_gemini_client()
+    if not client_module:
+        raise ConnectionError("Gemini client not configured.")
+
     log.info(f"Making API call to Gemini model: {model}")
-    response = client.generate_content(prompt)
+    # Instantiate the model with the correct model name here
+    model_instance = client_module.GenerativeModel(model)
+    response = model_instance.generate_content(prompt)
     return response.text
 
 def call_openai(prompt: str, model: str) -> str:
