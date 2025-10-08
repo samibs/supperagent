@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 
 # Import the config module so we can call its setup function.
 from agent_os import logging_config
+from agent_os.agents.base import Agent
 
 # We patch `load_config` at the top level of the test module.
 # This ensures that any import-time or runtime call to this function
@@ -113,3 +114,71 @@ class TestAgentOrchestrator(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+@patch('agent_os.config_loader.load_config', return_value={
+    'api_keys': {'anthropic': 'test-key-is-mocked'},
+    'models': {
+        'claude': 'claude-test-model',
+        'gemini': 'gemini-test-model',
+        'codex': 'codex-test-model'
+    }
+})
+class TestCoderAgentTRM(unittest.TestCase):
+    """
+    Unit tests specifically for the CoderAgent's TRM (Think, Reflect, Modify) logic.
+    """
+
+    def setUp(self):
+        """
+        Set up a fresh CoderAgent for each test.
+        The mock from the class decorator is not passed to setUp.
+        """
+        from agent_os.agents.coder import CoderAgent
+        self.coder_agent = CoderAgent()
+
+    def tearDown(self):
+        """Clean up knowledge base files if they are created."""
+        if os.path.exists("codex.md"):
+            os.remove("codex.md")
+
+    @patch.object(Agent, '_invoke_llm')
+    def test_trm_cycle_and_confidence_exit(self, mock_invoke_llm, mock_load_config):
+        """
+        Verify that the CoderAgent performs the TRM cycle correctly and
+        exits when the confidence threshold is met.
+        """
+        # --- Arrange ---
+        # This list simulates the sequence of LLM responses through two full TRM cycles.
+        mock_invoke_llm.side_effect = [
+            # --- Cycle 1 ---
+            'Initial draft code.',          # 1. Draft
+            'Refined reasoning 1.1',        # 2. Critique loop
+            'Refined reasoning 1.2',
+            'Refined reasoning 1.3',
+            'Refined reasoning 1.4',
+            'Refined reasoning 1.5',
+            'Refined reasoning 1.6',
+            'Revised draft 1.',             # 8. Revise
+            '6',                            # 9. Confidence check (fails, score < 7)
+
+            # --- Cycle 2 ---
+            'Refined reasoning 2.1',        # 10. Critique loop
+            'Refined reasoning 2.2',
+            'Refined reasoning 2.3',
+            'Refined reasoning 2.4',
+            'Refined reasoning 2.5',
+            'Refined reasoning 2.6',
+            'Final revised draft.',         # 16. Revise
+            '9',                            # 17. Confidence check (passes, score >= 7)
+        ]
+
+        # --- Act ---
+        final_code = self.coder_agent.execute_task("Build a simple calculator.")
+
+        # --- Assert ---
+        # It should take 17 LLM calls to complete two cycles and exit.
+        self.assertEqual(mock_invoke_llm.call_count, 17)
+
+        # The final returned code should be the last revised draft.
+        self.assertEqual(final_code, 'Final revised draft.')
