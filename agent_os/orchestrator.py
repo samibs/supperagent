@@ -74,6 +74,11 @@ class Orchestrator:
             return self.agents[agent_name].execute_task(*args)
 
     def _add_project_to_memory(self):
+        """Conditionally compiles and saves the project to long-term memory."""
+        if not memory_manager.is_enabled():
+            self.console.print("\n[bold yellow]Long-term memory is disabled. Skipping memory storage.[/bold yellow]")
+            return
+
         self.console.print("\n[bold]Phase 8: Storing Project in Long-Term Memory[/bold]")
         if not all([self.full_plan, self.fixed_code, self.final_documentation]):
             self.console.print("[yellow]Could not save to memory, essential artifacts missing.[/yellow]")

@@ -13,7 +13,7 @@ class ProjectArchitectAgent(Agent):
     def execute_task(self, task_description: str) -> str:
         """
         Generates the software architecture based on the project requirements,
-        first consulting long-term memory for similar past projects.
+        first consulting long-term memory for similar past projects if enabled.
 
         Args:
             task_description (str): The high-level requirements for the project.
@@ -23,20 +23,20 @@ class ProjectArchitectAgent(Agent):
         """
         self.log.info("Generating system architecture...")
 
-        # 1. Query long-term memory for relevant past projects.
-        self.log.info("Querying long-term memory for relevant past projects...")
-        relevant_memories = memory_manager.query_memory(task_description, n_results=2)
+        memory_context = "Long-term memory is disabled or no relevant projects were found."
+        if memory_manager.is_enabled():
+            self.log.info("Querying long-term memory for relevant past projects...")
+            relevant_memories = memory_manager.query_memory(task_description, n_results=2)
 
-        memory_context = "No relevant past projects found."
-        if relevant_memories.get('documents'):
-            self.log.info(f"Found {len(relevant_memories['documents'][0])} relevant memories.")
-            memory_context = "Here are some similar projects we've completed in the past:\n\n"
-            for doc in relevant_memories['documents'][0]:
-                memory_context += f"---\n{doc}\n---\n\n"
-        else:
-            self.log.info("No relevant memories found.")
+            if relevant_memories.get('documents'):
+                self.log.info(f"Found {len(relevant_memories['documents'][0])} relevant memories.")
+                memory_context = "Here are some similar projects we've completed in the past:\n\n"
+                for doc in relevant_memories['documents'][0]:
+                    memory_context += f"---\n{doc}\n---\n\n"
+            else:
+                self.log.info("No relevant memories found.")
 
-        # 2. Construct a prompt that includes the retrieved memories.
+        # Construct a prompt that includes the retrieved memories (or a notice that it's disabled).
         prompt = (
             "You are a world-class software architect. Your task is to design a high-level system architecture. "
             "Before you begin, review the following context from our long-term memory of past projects.\n\n"
@@ -47,8 +47,8 @@ class ProjectArchitectAgent(Agent):
             f"'{task_description}'"
         )
 
-        # 3. Invoke the LLM with the enhanced prompt.
-        architecture_plan = self._invoke_llm(model="claude", prompt=prompt)
+        # Invoke the LLM with the enhanced prompt.
+        architecture_plan = self._invoke_llm(preferred_model="claude", prompt=prompt)
 
         self.log.info("Architecture plan generated successfully.")
         return architecture_plan

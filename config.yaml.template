@@ -29,3 +29,11 @@ models:
 
   # Recommended for pure code generation tasks.
   codex: "gpt-4-turbo" # Using a modern equivalent for the "codex" role
+
+# --- Long-Term Memory ---
+# The long-term memory system uses a local vector database (ChromaDB) and
+# a sentence-transformer model to store and retrieve learnings from past projects.
+# WARNING: This requires significant RAM. If the application is killed unexpectedly,
+# it is recommended to set `enabled` to `false`.
+memory:
+  enabled: true

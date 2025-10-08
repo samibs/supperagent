@@ -1,51 +1,64 @@
 import logging
-import chromadb
-from sentence_transformers import SentenceTransformer
+from . import config_loader
 
 log = logging.getLogger('AgentOS.MemoryManager')
 
-# Use a specific, lightweight model for generating embeddings.
-# This model is loaded once and reused, which is efficient.
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# --- Conditional Initialization ---
+# These variables will only be populated if the memory system is enabled.
+embedding_model = None
+chromadb = None
 
 class MemoryManager:
-    """
-    Manages the long-term memory of the AgentOS platform using a vector DB.
-    """
-    def __init__(self, path: str = "./chroma_db"):
-        """
-        Initializes the MemoryManager and the ChromaDB client.
+    """Manages the long-term memory of the AgentOS platform using a vector DB."""
 
-        Args:
-            path (str): The directory where the vector database will be stored.
+    def __init__(self):
+        """Initializes the MemoryManager and conditionally loads dependencies."""
+        self.client = None
+        self.collection = None
+        self._initialize_if_enabled()
+
+    def _initialize_if_enabled(self):
         """
+        Checks the config and only loads the heavy libraries (Chroma, SentenceTransformer)
+        if the memory feature is explicitly enabled.
+        """
+        global embedding_model, chromadb
         try:
+            config = config_loader.load_config()
+            if not config.get('memory', {}).get('enabled', False):
+                log.warning("Long-term memory is disabled in the configuration. MemoryManager will not be active.")
+                return
+
+            log.info("Long-term memory is enabled. Initializing ChromaDB and embedding model...")
+
+            # Conditionally import heavy libraries
+            from sentence_transformers import SentenceTransformer
+            import chromadb as cdb
+
+            embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            chromadb = cdb
+
+            # Initialize ChromaDB client
+            path = "./chroma_db"
             self.client = chromadb.PersistentClient(path=path)
             self.collection = self.client.get_or_create_collection(
                 name="agent_os_memory",
-                metadata={"hnsw:space": "cosine"} # Use cosine similarity
+                metadata={"hnsw:space": "cosine"}
             )
-            log.info("MemoryManager initialized with ChromaDB client.")
+            log.info("MemoryManager initialized successfully.")
+
+        except ImportError as e:
+            log.error(f"Failed to import memory libraries. Please run 'pip install chromadb sentence-transformers'. Details: {e}")
         except Exception as e:
-            log.error(f"Failed to initialize ChromaDB: {e}", exc_info=True)
-            self.client = None
-            self.collection = None
+            log.error(f"Failed to initialize MemoryManager: {e}", exc_info=True)
+
+    def is_enabled(self) -> bool:
+        """Returns True if the memory system is configured and enabled."""
+        return self.collection is not None
 
     def add_memory(self, text_to_remember: str, metadata: dict, doc_id: str):
-        """
-        Adds a new memory to the vector database.
-
-        The text is converted into an embedding and stored along with its
-        metadata and a unique ID.
-
-        Args:
-            text_to_remember (str): The actual text content of the memory.
-            metadata (dict): A dictionary of metadata (e.g., project_goal).
-            doc_id (str): A unique identifier for this memory.
-        """
-        if not self.collection:
-            log.error("Cannot add memory, collection is not available.")
-            return
+        """Adds a new memory to the vector database if enabled."""
+        if not self.is_enabled(): return
 
         try:
             log.info(f"Adding new memory with ID: {doc_id}")
@@ -61,19 +74,8 @@ class MemoryManager:
             log.error(f"Failed to add memory to ChromaDB: {e}", exc_info=True)
 
     def query_memory(self, query_text: str, n_results: int = 3) -> dict:
-        """
-        Queries the vector database for memories similar to the query text.
-
-        Args:
-            query_text (str): The text to search for.
-            n_results (int): The maximum number of similar results to return.
-
-        Returns:
-            dict: A dictionary containing the query results from ChromaDB.
-        """
-        if not self.collection:
-            log.error("Cannot query memory, collection is not available.")
-            return {}
+        """Queries the vector database for memories if enabled."""
+        if not self.is_enabled(): return {}
 
         try:
             log.info(f"Querying memory for: '{query_text[:50]}...'")
