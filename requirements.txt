@@ -1,0 +1,10 @@
+# Core dependencies
+pydantic
+PyYAML
+
+# --- Real LLM client libraries ---
+# In a real-world scenario, these would be the actual packages for interacting
+# with the respective LLM APIs or CLIs.
+anthropic
+# google-generativeai
+# openai
