@@ -1,3 +1,6 @@
+import os
+import subprocess
+import tempfile
 from .base import Agent, LLMModel
 
 # Constants for the TRM process
@@ -7,10 +10,34 @@ CRITIQUE_LOOPS = 6
 class CoderAgent(Agent):
     """
     The Coder Agent uses an advanced "Think, Reflect, Modify" (TRM)
-    reasoning model to generate high-quality implementation code.
+    reasoning model and self-correction tools to generate high-quality code.
     """
     def __init__(self):
         super().__init__("CoderAgent")
+
+    def _run_linter(self, code_to_lint: str) -> str | None:
+        """A tool to run the ruff linter on code and return issues."""
+        self.log.info("TRM Tool: Running linter on generated code...")
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as tmp:
+            tmp.write(code_to_lint)
+            filename = tmp.name
+
+        try:
+            process = subprocess.run(
+                ["ruff", "check", filename],
+                capture_output=True, text=True, timeout=30
+            )
+            if not process.stdout:
+                self.log.info("Linter found no issues.")
+                return None
+
+            self.log.warning(f"Linter found issues:\n{process.stdout}")
+            return process.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            self.log.error(f"Failed to run ruff linter: {e}")
+            return f"Linter execution failed: {e}"
+        finally:
+            os.remove(filename)
 
     def _draft_initial_answer(self, component_specification: str) -> str:
         """Generates a quick, rough draft of the code."""
@@ -73,62 +100,49 @@ class CoderAgent(Agent):
 
         try:
             score_response = self._invoke_llm(model="codex", prompt=prompt)
-            # Find the first integer in the response string.
             score_str = ''.join(filter(str.isdigit, score_response))
             if not score_str:
                 self.log.warning("Could not parse confidence score from LLM response. Defaulting to low confidence.")
                 return False
-
             score = int(score_str)
             self.log.info(f"TRM: Received confidence score of {score}/10.")
-
-            # The confidence threshold increases with each cycle.
-            confidence_threshold = 7 + (cycle_number // 4) # Starts at 7, increases to 8, 9...
+            confidence_threshold = 7 + (cycle_number // 4)
             is_confident = score >= confidence_threshold
-
             if is_confident:
                 self.log.info(f"TRM: Confidence score {score} meets or exceeds threshold {confidence_threshold}. Finalizing answer.")
             else:
                 self.log.info(f"TRM: Confidence score {score} is below threshold {confidence_threshold}. Continuing to refine.")
-
             return is_confident
-
         except (ValueError, TypeError) as e:
             self.log.error(f"Could not parse confidence score. Error: {e}. Assuming low confidence.")
             return False
 
     def execute_task(self, component_specification: str) -> str:
         """
-        Generates Python code using the full TRM process.
-
-        Args:
-            component_specification (str): A detailed description of the
-                                           component to be built.
-
-        Returns:
-            str: The final, high-quality Python code.
+        Generates Python code using the full TRM and self-correction process.
         """
         self.log.info("Starting TRM code generation process...")
-
         current_draft = ""
         for i in range(MAX_CYCLES):
             self.log.info(f"TRM Cycle {i+1}/{MAX_CYCLES}...")
-
-            # 1. Draft an initial (or new) answer
             if not current_draft:
                 current_draft = self._draft_initial_answer(component_specification)
-
-            # 2. Create a scratchpad and self-critique
             refined_reasoning = self._self_critique_loop(current_draft, component_specification)
-
-            # 3. Revise the answer based on the critique
             new_draft = self._revise_answer(component_specification, current_draft, refined_reasoning)
-
+            linter_issues = self._run_linter(new_draft)
+            if linter_issues:
+                self.log.info("TRM: Linter found issues. Performing self-correction.")
+                correction_prompt = (
+                    "Your previous code draft has been reviewed by the `ruff` linter, which found the following issues. "
+                    "Please fix these specific issues and provide the complete, corrected code.\n\n"
+                    f"--- Linter Issues ---\n{linter_issues}\n\n"
+                    f"--- Original Code with Issues ---\n```python\n{new_draft}\n```\n\n"
+                    "Your task is to return only the full, corrected Python code."
+                )
+                new_draft = self._invoke_llm(model="codex", prompt=correction_prompt)
+                self.log.info("TRM: Self-correction applied.")
             current_draft = new_draft
-
-            # 4. Repeat until confident
             if self._check_confidence(i, current_draft):
                 break
-
         self.log.info("TRM process complete. Returning final code.")
         return current_draft
