@@ -63,4 +63,7 @@ venv.bak/
 # Project-specific
 agent_os.log
 config.yaml
+
+# --- Database / State ---
 workflow_state.json
+chroma_db/

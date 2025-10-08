@@ -25,24 +25,25 @@ class Agent(ABC):
         """
         Invokes a specified LLM and records the interaction in the knowledge base.
 
-        This method now calls `load_config()` at runtime, avoiding import-time
-        side effects.
+        This method now calls the appropriate real client for the requested model.
         """
-        self.log.info(f"Preparing to invoke LLM '{model}' for task...")
+        self.log.info(f"Preparing to invoke real LLM client for '{model}'...")
         self.log.debug(f"LLM Prompt: {prompt[:100]}...")
 
         response = ""
         success = False
         try:
-            # Load config at runtime, just before it's needed.
             config = config_loader.load_config()
             specific_model_name = config['models'][model]
 
             if model == 'claude':
                 response = llm_client.call_anthropic(prompt, model=specific_model_name)
-            else: # Fallback for simulated models
-                response = f"--- SIMULATED RESPONSE ({model.capitalize()}) ---\nModel '{specific_model_name}' would be called for: {prompt}"
-                self.log.warning(f"{model.capitalize()} client not yet implemented. Returning simulated response.")
+            elif model == 'gemini':
+                response = llm_client.call_gemini(prompt, model=specific_model_name)
+            elif model == 'codex':
+                response = llm_client.call_openai(prompt, model=specific_model_name)
+            else:
+                raise ValueError(f"Unsupported model type requested: {model}")
 
             success = True
             self.log.debug(f"LLM Response: {response[:100]}...")
@@ -50,12 +51,12 @@ class Agent(ABC):
         except FileNotFoundError as e:
             response = str(e)
             self.log.error(str(e), exc_info=True)
-        except KeyError:
-            response = f"ERROR: Model '{model}' is not configured."
-            self.log.error(f"Model '{model}' not found in config.yaml. Please check your configuration.")
+        except (KeyError, ValueError) as e:
+            response = f"ERROR: Model '{model}' is not configured or supported. Details: {e}"
+            self.log.error(response, exc_info=True)
         except Exception as e:
-            response = f"ERROR: Failed to get response from LLM. Check logs for details."
-            self.log.error(f"An error occurred during LLM invocation: {e}", exc_info=True)
+            response = f"ERROR: Failed to get response from LLM '{model}'. Check logs. Details: {e}"
+            self.log.error(response, exc_info=True)
         finally:
             knowledge_manager.record_interaction(
                 model_family=model,
